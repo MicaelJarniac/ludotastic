@@ -19,6 +19,17 @@
         "ideas",
         "projectManagement"
       ]
+    },
+    {
+      "login": "KaiqueCarvalho01",
+      "name": "Kaique Carvalho",
+      "avatar_url": "https://avatars.githubusercontent.com/u/187881133?v=4",
+      "profile": "https://github.com/KaiqueCarvalho01",
+      "contributions": [
+        "code",
+        "test",
+        "doc"
+      ]
     }
   ],
   "contributorsPerLine": 7,
