@@ -2,6 +2,43 @@
 
 <!-- version list -->
 
+## v0.3.0 (2026-11-10)
+
+### Code Style
+
+- Declare __all__ as a tuple first, and mark constants Final
+  ([`e465712`](https://github.com/MicaelJarniac/ludotastic/commit/e4657129737624aefc6a1450738695ff08e25458))
+
+- Use type: ignore[ty:…] for ty suppressions
+  ([`9bb9e5c`](https://github.com/MicaelJarniac/ludotastic/commit/9bb9e5c92ebe311e1fe120226b326f920b6149cc))
+
+### Continuous Integration
+
+- Let the noxfile load on the Python that runs Nox
+  ([`4dcd001`](https://github.com/MicaelJarniac/ludotastic/commit/4dcd0011fed8699f2298faebeebc9c7d9b9dc18d))
+
+### Documentation
+
+- Update .all-contributorsrc [skip ci]
+  ([`566c5b9`](https://github.com/MicaelJarniac/ludotastic/commit/566c5b9571a41c0304c4ffde1d99d754ee15899e))
+
+- Update docs/README.md [skip ci]
+  ([`6da5e9f`](https://github.com/MicaelJarniac/ludotastic/commit/6da5e9f13623f6f64b57b7abdc7c33afbaac6fb2))
+
+### Features
+
+- Add Rock-Paper-Scissors ([#2](https://github.com/MicaelJarniac/ludotastic/pull/2),
+  [`7389839`](https://github.com/MicaelJarniac/ludotastic/commit/7389839eff09d587dde0070f1379f24e7271a64a))
+
+### Refactoring
+
+- Express value constraints with annotated_types
+  ([`eb4c632`](https://github.com/MicaelJarniac/ludotastic/commit/eb4c632d1461772c74c1f8136c3085fa8a1706fb))
+
+- Name the ranges of values with annotated_types
+  ([`ce3e442`](https://github.com/MicaelJarniac/ludotastic/commit/ce3e442b214303619a4abed6ab45868a2fb6f75a))
+
+
 ## v0.2.1 (2026-11-06)
 
 ### Bug Fixes
