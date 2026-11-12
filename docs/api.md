@@ -14,6 +14,10 @@ This page provides detailed API documentation for Ludotastic.
 
 ::: ludotastic.storage
 
+## Connect Four
+
+::: ludotastic.games.connect_four
+
 ## Rock-Paper-Scissors
 
 ::: ludotastic.games.rock_paper_scissors
