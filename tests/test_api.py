@@ -40,6 +40,7 @@ async def test_games(client: httpx2.AsyncClient) -> None:
     games = (await client.get("/api/games")).json()
     assert [g["id"] for g in games] == [
         "2048",
+        "connect-four",
         "rock-paper-scissors",
         "snake",
         "tictactoe",

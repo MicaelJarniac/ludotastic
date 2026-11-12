@@ -25,6 +25,7 @@ from typesafe_sdk import AsyncTypeSafeClient
 
 from ludotastic import ActionMode, AIPlayer, TurnContext, View
 from ludotastic.engine.models import IMAGES_HEADER, TypeSafeImageModel, resolve_model
+from ludotastic.games.connect_four import ConnectFour
 from ludotastic.games.snake import Snake
 from ludotastic.games.tictactoe import TicTacToe
 from ludotastic.games.twentyfortyeight import TwentyFortyEight
@@ -113,6 +114,7 @@ def test_resolve_model_picks_the_image_class(monkeypatch: pytest.MonkeyPatch) ->
 @pytest.mark.parametrize(
     ("game", "size"),
     [
+        (ConnectFour(), (560, 500)),
         (TicTacToe(), (420, 420)),
         (Snake(), (480, 480)),
         (TwentyFortyEight(), (500, 500)),
