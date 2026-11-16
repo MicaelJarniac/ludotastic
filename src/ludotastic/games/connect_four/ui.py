@@ -12,8 +12,6 @@ from ludotastic.games.connect_four.game import (
     DISCS,
     ConnectFourState,
     Drop,
-    is_full,
-    winner,
     winning_cells,
 )
 
@@ -29,8 +27,7 @@ def render(ctx: RenderContext) -> None:
     state = ctx.match.state
     assert isinstance(state, ConnectFourState)  # noqa: S101
     seat = DISCS.index(state.next_disc)
-    over = winner(state.board) is not None or is_full(state.board)
-    clickable = not over and ctx.can_act(seat)
+    clickable = ctx.can_act(seat)
     highlight = winning_cells(state.board)
 
     with ui.column().classes("items-center gap-3"):

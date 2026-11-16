@@ -286,6 +286,7 @@ def test_evaluate_covers_center_and_windows() -> None:
     )
     score_r = evaluate(s.board, "R")
     score_y = evaluate(s.board, "Y")
+    assert score_r == snapshot(-68)
     assert score_r == -score_y
 
 
@@ -375,6 +376,7 @@ async def test_minimax_beats_random_and_greedy() -> None:
     greedy_outcome = await match_vs_greedy.run()
     assert match_vs_greedy.status is MatchStatus.FINISHED
     assert greedy_outcome is not None
+    assert greedy_outcome.scores[0] == 1.0
 
 
 async def test_ui_interactive_play_and_win(user: User, service: MatchService) -> None:
@@ -416,7 +418,25 @@ async def test_ui_disables_full_columns_and_non_acting_seats(
             "...R...",
         ]
     )
-    match.thinking = {1}
+    match.thinking = {0}
     await user.open(f"/match/{match.id}")
-    # Column 3 is full, while seat 0 is viewing a turn where seat 1 is thinking.
-    assert user.find(marker="col-3").elements
+
+    def disabled(col: int) -> bool:
+        (button,) = user.find(marker=f"col-{col}").elements
+        return bool(button.props.get("disable"))
+
+    # On R's turn, only the full column 3 is closed.
+    assert [disabled(col) for col in range(COLS)] == [
+        False,
+        False,
+        False,
+        True,
+        False,
+        False,
+        False,
+    ]
+
+    # When R's seat isn't waiting on this viewer, every column is closed.
+    match.thinking = set()
+    await user.open(f"/match/{match.id}")
+    assert all(disabled(col) for col in range(COLS))
