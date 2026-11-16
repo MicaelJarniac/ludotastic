@@ -16,6 +16,7 @@ __all__: tuple[str, ...] = (
     "MinimaxBot",
     "draw_board",
     "evaluate",
+    "is_full",
     "landing_row",
     "render_board",
     "winner",
@@ -67,7 +68,7 @@ EMPTY: Final[Board] = (
 
 WIN_SCORE: Final = 10_000
 CENTER_BONUS: Final = 3
-WINDOW_SCORES: Final[dict[int, int]] = {2: 5, 3: 50, 4: WIN_SCORE}
+WINDOW_SCORES: Final[dict[int, int]] = {2: 5, 3: 50}
 
 
 def _all_lines() -> tuple[Line, ...]:
@@ -529,7 +530,8 @@ class MinimaxBot(Player):
                 best_actions = [action]
             elif score == best_score:
                 best_actions.append(action)
-            alpha = max(alpha, best_score)
+            # One below the best, so a cut-off move can't fake a tie with it.
+            alpha = max(alpha, best_score - 1)
 
         return Decision(
             action=ctx.rng.choice(best_actions),

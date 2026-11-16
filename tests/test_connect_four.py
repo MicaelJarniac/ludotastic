@@ -338,6 +338,34 @@ async def test_minimax_finds_win_block_and_handles_full_columns() -> None:
     assert isinstance(leaf_decision.action, Drop)
 
 
+@pytest.mark.parametrize("seed", range(10))
+async def test_minimax_never_ties_a_pruned_move(seed: int) -> None:
+    # Column 5 is the only best move; a move cut off by alpha-beta must not
+    # come back scored as a tie with it.
+    s = state_from(
+        [
+            "...R...",
+            "...Y...",
+            "...R...",
+            "R..R..R",
+            "Y..R.YY",
+            "YR.Y.YR",
+        ]
+    )
+    decision = await MinimaxBot(depth=4).act(
+        TurnContext(
+            game=GAME,
+            state=s,
+            player=1,
+            legal_actions=GAME.legal_actions(s, 1),
+            turn=0,
+            rng=random.Random(seed),
+        )
+    )
+    assert decision.action == Drop(column=5)
+    assert decision.details["score"] == -21
+
+
 async def test_minimax_beats_random_and_greedy() -> None:
     outcome = await Match(GAME, [MinimaxBot(depth=4), RandomBot()], seed=1).run()
     assert outcome is not None

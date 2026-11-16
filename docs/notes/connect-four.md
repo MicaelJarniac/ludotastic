@@ -64,8 +64,10 @@ perspective:
 - **69 four-cell windows (`LINES`)**:
   - Uncontested window with 2 own discs: `+5` (`-5` for opponent).
   - Uncontested window with 3 own discs: `+50` (`-50` for opponent).
-  - Connected 4: `+10,000` (`-10,000` for opponent), adjusted by remaining
-    search depth so faster wins and slower losses are preferred.
+
+A finished game never reaches `evaluate`: the search scores a win at
+`10,000` plus the remaining depth, so faster wins and slower losses are
+preferred.
 
 ## Running experiments
 
