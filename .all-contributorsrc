@@ -30,6 +30,17 @@
         "test",
         "doc"
       ]
+    },
+    {
+      "login": "gabrieldnsilva",
+      "name": "Gabriel Danilo",
+      "avatar_url": "https://avatars.githubusercontent.com/u/160099990?v=4",
+      "profile": "https://github.com/gabrieldnsilva",
+      "contributions": [
+        "code",
+        "test",
+        "doc"
+      ]
     }
   ],
   "contributorsPerLine": 7,
