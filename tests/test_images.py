@@ -238,6 +238,18 @@ async def test_service_checks_the_view(service: MatchService) -> None:
     assert isinstance(match.players[0], AIPlayer)
     assert match.players[0].view is View.BOTH
 
+    class Pictures(TicTacToe):
+        info = TicTacToe.info.model_copy(
+            update={"id": "pictures", "views": (View.IMAGE,)}
+        )
+
+    games.register(Pictures)
+    match = service.create("pictures", [AISpec(model="test"), BotSpec()], start=False)
+    assert isinstance(match.players[0], AIPlayer)
+    assert match.players[0].view is View.IMAGE
+    with pytest.raises(ValueError, match="does not offer the text view"):
+        service.create("pictures", [AISpec(model="test", view=View.TEXT), BotSpec()])
+
 
 def test_fallback_model_names_are_resolved(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TYPESAFE_API_KEY", "test")

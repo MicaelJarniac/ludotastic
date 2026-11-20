@@ -59,8 +59,11 @@ class AISpec(BaseModel):
     instructions: str | None = None
     fallback_model: str | None = None
     """A model behind the main one, such as a language model behind Jev."""
-    view: View = View.TEXT
-    """Whether the model sees the game as text, a picture, or both."""
+    view: View | None = None
+    """Whether the model sees the game as text, a picture, or both.
+
+    Defaults to the game's preferred view.
+    """
     min_interval: NonNegativeFloat | None = None
     """The fewest seconds between two requests in live games.
 
@@ -94,8 +97,12 @@ def build_player(game: Game[Any, Any], spec: HumanSpec | BotSpec | AISpec) -> Pl
                 raise ValueError(msg)
             return factory()
         case _:
-            if spec.view is not View.TEXT and not game.can_draw:
-                msg = f"{game.info.name} cannot draw itself for the {spec.view} view"
+            view = spec.view or game.info.views[0]
+            if view is not View.TEXT and not game.can_draw:
+                msg = f"{game.info.name} cannot draw itself for the {view} view"
+                raise ValueError(msg)
+            if view not in game.info.views:
+                msg = f"{game.info.name} does not offer the {view} view"
                 raise ValueError(msg)
             if spec.mode is not None and spec.mode not in game.info.action_modes:
                 msg = f"{game.info.name} does not support the {spec.mode} mode"
@@ -106,7 +113,7 @@ def build_player(game: Game[Any, Any], spec: HumanSpec | BotSpec | AISpec) -> Pl
                 name=spec.name,
                 instructions=spec.instructions,
                 fallback_model=spec.fallback_model,
-                view=spec.view,
+                view=view,
                 min_interval=spec.min_interval,
             )
 

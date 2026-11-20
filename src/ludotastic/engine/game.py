@@ -127,6 +127,12 @@ class GameInfo(BaseModel):
     """
     action_modes: tuple[ActionMode, ...] = tuple(ActionMode)
     """The ways an AI can be asked to act, the first being the default."""
+    views: tuple[View, ...] = tuple(View)
+    """What an AI may be shown of the game, the first being the default.
+
+    Views other than [text][ludotastic.View.TEXT] also need the game to
+    [draw itself][ludotastic.Game.snapshot].
+    """
     tags: tuple[str, ...] = ()
     """Free-form tags, such as `classic` or `real-time`."""
 
@@ -137,6 +143,9 @@ class GameInfo(BaseModel):
             raise ValueError(msg)
         if not self.action_modes:
             msg = "at least one action mode is required"
+            raise ValueError(msg)
+        if not self.views:
+            msg = "at least one view is required"
             raise ValueError(msg)
         return self
 
