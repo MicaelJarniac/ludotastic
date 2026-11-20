@@ -122,17 +122,18 @@ class _SeatForm:
                 self.mode = ui.select(
                     {"": "Game default", **modes}, value="", label="Action mode"
                 ).classes("w-full")
-                views = {
+                names = {
                     View.TEXT: "Text",
                     View.IMAGE: "Picture",
                     View.BOTH: "Text and picture",
                 }
+                views = {v: names[v] for v in game.info.views}
                 self.view = (
-                    ui.select(views, value=View.TEXT, label="What the AI sees")
+                    ui.select(views, value=game.info.views[0], label="What the AI sees")
                     .classes("w-full")
                     .mark(f"view-{seat}")
                 )
-                self.view.set_visibility(game.can_draw)
+                self.view.set_visibility(game.can_draw and len(views) > 1)
                 self.fallback = ui.select(
                     ["", *settings.suggested_models],
                     value="",

@@ -1,10 +1,14 @@
 """AI players, powered by Pydantic AI."""
 
-__all__: tuple[str, ...] = ("AIPlayer",)
+__all__: tuple[str, ...] = (
+    "AIPlayer",
+    "Ranking",
+    "order_by",
+)
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast, override
+from typing import TYPE_CHECKING, Any, Final, cast, override
 
 from pydantic import BaseModel
 from pydantic_ai import (
@@ -21,11 +25,13 @@ from pydantic_ai import (
 from pydantic_ai.capabilities import ModelFallback
 from pydantic_ai.models import Model
 from pydantic_ai.models.decision import DecisionModel
+from pydantic_ai.run import AgentRunResult
 
 from ludotastic.engine.game import ActionMode, View
 from ludotastic.engine.models import resolve_model
 from ludotastic.engine.players import Decision, Player, PlayerKind, TurnContext
 from ludotastic.engine.usage import Usage
+from ludotastic.types import NonNegativeFloat
 
 if TYPE_CHECKING:
     from pydantic_ai.settings import ModelSettings
@@ -38,6 +44,27 @@ class _Turn:
 
 def _legal_keys(ctx: TurnContext) -> dict[str, BaseModel]:
     return {ctx.game.action_key(action): action for action in ctx.legal_actions}
+
+
+class Ranking(BaseModel):
+    """A language model's order of the options, likeliest first."""
+
+    order: list[str]
+    """Every option's label, exactly once, likeliest first."""
+
+
+def order_by(probabilities: Mapping[str, float], labels: Sequence[str]) -> list[str]:
+    """The labels, likeliest first; ties keep their order, unlisted labels go last.
+
+    Examples:
+        >>> order_by({"b": 0.7, "c": 0.2}, ["a", "b", "c"])
+        ['b', 'c', 'a']
+    """
+    return sorted(labels, key=lambda label: -probabilities.get(label, 0.0))
+
+
+LANGUAGE_MODEL_INTERVAL: Final = 2.0
+"""Default seconds between a language model's requests in live games."""
 
 
 class AIPlayer(Player):
@@ -62,6 +89,7 @@ class AIPlayer(Player):
         retries: int = 2,
         request_limit: int = 10,
         model_settings: ModelSettings | None = None,
+        min_interval: NonNegativeFloat | None = None,
     ) -> None:
         """Set up the player.
 
@@ -78,6 +106,9 @@ class AIPlayer(Player):
             retries: How often an invalid or illegal action is sent back.
             request_limit: The most model requests a single turn may take.
             model_settings: Settings such as temperature, passed to every run.
+            min_interval: The fewest seconds between two requests in live
+                games; defaults to none for decision models, which answer
+                quickly and cheaply, and to 2 seconds for language models.
 
         Raises:
             ValueError: If a decision model, which can only pick among options,
@@ -87,15 +118,23 @@ class AIPlayer(Player):
         picks_only = isinstance(self.model, DecisionModel)
         if (
             picks_only
-            and mode not in {None, ActionMode.CHOICE}
+            and mode not in {None, ActionMode.CHOICE, ActionMode.RANK}
             and fallback_model is None
         ):
             msg = (
                 f"{self.model.model_name} is a decision model: it can only pick "
-                f"among options, so it needs the {ActionMode.CHOICE} mode, or a "
-                f"fallback model for the {mode} mode"
+                f"among options, so it needs the {ActionMode.CHOICE} or "
+                f"{ActionMode.RANK} mode, or a fallback model for the {mode} mode"
             )
             raise ValueError(msg)
+        self.picks_only = picks_only
+        self.min_interval = (
+            min_interval
+            if min_interval is not None
+            else 0.0
+            if picks_only
+            else LANGUAGE_MODEL_INTERVAL
+        )
         self.model_id = model if isinstance(model, str) else self.model.model_name
         super().__init__(name or self.model_id)
         self.mode = mode
@@ -168,6 +207,8 @@ class AIPlayer(Player):
         option.
         """
         mode = self.mode or ctx.game.info.action_modes[0]
+        if mode is ActionMode.RANK:
+            return await self._rank(ctx)
         if len(ctx.legal_actions) == 1:
             return Decision(
                 action=ctx.legal_actions[0], details={"mode": str(mode), "forced": True}
@@ -183,11 +224,28 @@ class AIPlayer(Player):
                 if mode is ActionMode.TOOLS
                 else self._prompt(ctx)
             )
-        result = await agent.run(
+        result = await self._run(agent, prompt, ctx)
+        usage, details = self._report(result, mode)
+        return Decision(
+            action=cast("BaseModel", result.output), details=details, usage=usage
+        )
+
+    async def _run(
+        self,
+        agent: Agent[_Turn, Any],
+        prompt: str | list[str | BinaryContent],
+        ctx: TurnContext,
+    ) -> AgentRunResult[Any]:
+        return await agent.run(
             prompt,
             deps=_Turn(ctx=ctx),
             usage_limits=UsageLimits(request_limit=self.request_limit),
         )
+
+    def _report(
+        self, result: AgentRunResult[Any], mode: ActionMode
+    ) -> tuple[Usage, dict[str, Any]]:
+        """What a run cost, and the details worth keeping with the move."""
         run = result.usage
         usage = Usage(
             requests=run.requests,
@@ -205,9 +263,77 @@ class AIPlayer(Player):
             for key in ("confidence", "probabilities", "route"):
                 if key in provider_details:
                     details[key] = provider_details[key]
+        return usage, details
+
+    async def _rank(self, ctx: TurnContext) -> Decision:
+        """Order the game's options, likeliest first.
+
+        A decision model picks one option, and its probabilities give the
+        order. A language model writes the order out.
+        """
+        game = ctx.game
+        options = dict(game.rank_options(ctx.state, ctx.player))
+        labels = list(options)
+        prompt = self._prompt(ctx)
+        if self.picks_only:
+            choices = Choices(
+                {label: Choice(text, value=label) for label, text in options.items()},
+                name="ranking",
+                description=game.rank_question(ctx.state, ctx.player),
+            )
+            result = await self._run(self._agent(ctx, choices), prompt, ctx)
+            usage, details = self._report(result, ActionMode.RANK)
+            probabilities = details.get("probabilities", {}).get("response", {})
+            order = order_by(probabilities, labels)
+            if order[0] != result.output:
+                order.remove(result.output)
+                order.insert(0, result.output)
+        else:
+            result = await self._run(self._ranking_agent(ctx, options), prompt, ctx)
+            usage, details = self._report(result, ActionMode.RANK)
+            order = cast("Ranking", result.output).order
+        details["order"] = order
         return Decision(
-            action=cast("BaseModel", result.output), details=details, usage=usage
+            action=game.rank_action(ctx.state, ctx.player, order),
+            details=details,
+            usage=usage,
         )
+
+    def _ranking_agent(
+        self, ctx: TurnContext, options: Mapping[str, str]
+    ) -> Agent[_Turn, Any]:
+        listing = "\n".join(f"- {label}: {text}" for label, text in options.items())
+        output = ToolOutput(
+            Ranking,
+            name="submit_ranking",
+            description=(
+                f"{ctx.game.rank_question(ctx.state, ctx.player)} List every "
+                f"option's label exactly once, likeliest first. The options:\n"
+                f"{listing}"
+            ),
+        )
+        agent = self._agent(ctx, output)
+
+        @agent.output_validator
+        def check_order(run: RunContext[_Turn], ranking: Ranking) -> Ranking:
+            del run
+            if sorted(ranking.order) == sorted(options):
+                return ranking
+            missing = ", ".join(sorted(set(options) - set(ranking.order)))
+            extra = ", ".join(sorted(set(ranking.order) - set(options)))
+            repeated = len(ranking.order) != len(set(ranking.order))
+            problems = [
+                *([f"missing: {missing}"] if missing else []),
+                *([f"not options: {extra}"] if extra else []),
+                *(["some labels appear twice"] if repeated else []),
+            ]
+            msg = (
+                f"List every option exactly once ({'; '.join(problems)}). "
+                f"The labels: {', '.join(options)}."
+            )
+            raise ModelRetry(msg)
+
+        return agent
 
     def _prompt(self, ctx: TurnContext) -> str | list[str | BinaryContent]:
         """The game as this player is shown it: text, a picture, or both."""

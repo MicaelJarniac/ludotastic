@@ -37,6 +37,11 @@ class Renderer(Protocol):
     Called inside a NiceGUI container, and again every time the match changes.
     Use `ui.*` elements freely. For real-time games, also bind keys with
     `ui.keyboard` and submit actions through `ctx.submit`.
+
+    A renderer can instead return a callable, to update what it drew in place:
+    the callable is then called on every change, and the match is not drawn
+    again. Live games need this for anything a person is in the middle of,
+    such as a drawing.
     """
 
     def __call__(self, ctx: RenderContext) -> Any:  # noqa: ANN401

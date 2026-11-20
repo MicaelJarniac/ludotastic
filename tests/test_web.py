@@ -292,3 +292,26 @@ async def test_dark_mode_toggle(
                 break
             await asyncio.sleep(0.01)
         assert dark.value is expected
+
+
+async def test_renderers_can_update_in_place(user: User, service: MatchService) -> None:
+    match = service.create("tictactoe", [HumanSpec(), BotSpec()], start=False)
+    drawn: list[str] = []
+    updates: list[int] = []
+
+    def renderer(ctx: object) -> object:
+        drawn.append("drawn")
+        ui.label("in place")
+        return lambda: updates.append(len(match.history))
+
+    match.game.renderer = lambda: renderer
+    match.start()
+    await user.open(f"/match/{match.id}")
+    await user.should_see("in place")
+    match.submit(0, {"cell": 4})
+    for _ in range(100):
+        if updates and updates[-1] >= 1:
+            break
+        await asyncio.sleep(0.01)
+    assert drawn == ["drawn"]
+    assert updates[-1] >= 1

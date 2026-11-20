@@ -153,6 +153,8 @@ def test_game_info_validation() -> None:
         GameInfo(id="x", name="X", description="", min_players=3, max_players=2)
     with pytest.raises(ValidationError, match="action mode"):
         GameInfo(id="x", name="X", description="", action_modes=())
+    with pytest.raises(ValidationError, match="view"):
+        GameInfo(id="x", name="X", description="", views=())
     with pytest.raises(ValidationError):
         GameInfo(id="Bad Id", name="X", description="")
 

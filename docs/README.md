@@ -136,6 +136,9 @@ Each player is `bot:NAME`, or a model name with an optional action mode:
 - `@structured`: fill in the game's move model. Illegal moves go back to the
   model for another try.
 - `@tools`: look at the game through tools, then submit a move.
+- `@rank`: order a set of options, likeliest first, for games whose move is an
+  ordering. A decision model's probabilities give the order, so one request
+  ranks every option.
 
 Settings come from `LUDOTASTIC_*` environment variables or a `.env` file; see
 [`Settings`][ludotastic.Settings].
@@ -153,8 +156,9 @@ connect-four = "ludotastic_connect_four:ConnectFour"
 The bundled games, such as [Tic-Tac-Toe][tictactoe], are registered the same way
 and make good templates. A game can also provide its own scripted bots, extra AI
 tools and a NiceGUI renderer; games without one get a generic text view. Games
-are turn-based (`Timing.STEP`) or real-time (`Timing.TICK`), where a player that
-is too slow on a tick loses its turn.
+are turn-based (`Timing.STEP`), real-time (`Timing.TICK`), where a player that
+is too slow on a tick loses its turn, or live (`Timing.LIVE`), where every
+player acts whenever it is ready and nobody waits for anybody else.
 
 How a game describes its state in [`observe`][ludotastic.Game.observe] affects
 how well models play it, sometimes a lot: see the
