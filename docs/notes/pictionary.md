@@ -4,6 +4,8 @@ This note describes the bundled Pictionary game in
 `src/ludotastic/games/pictionary/`: how a round works, how guessers are scored,
 and how people, decision models such as Jev, and language models each guess.
 
+![A round in progress: a sun drawn on the pad, and a person's ranking beside it](pictionary.png)
+
 ## The game
 
 Seat 0 is the **Drawer**; every other seat is a **Guesser** (2 to 5 players).
