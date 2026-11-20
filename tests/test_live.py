@@ -374,3 +374,34 @@ async def test_a_seat_whose_view_never_changes_is_asked_once() -> None:
     seat = Counter()
     await Match(Blindfold(), [seat, Idle()]).run()
     assert seat.asked == 1
+
+
+async def test_viewers_are_told_when_the_clock_moves() -> None:
+    match = Match(Scribble(), [Idle(), Idle()])
+    clocks: list[float] = []
+    match.subscribe(lambda m: clocks.append(m.state.clock))  # type: ignore[ty:unresolved-attribute]
+    await match.run()
+    # Nobody acts after the first answers, yet the clock is reported as it runs.
+    assert len({round(c, 2) for c in clocks}) > 5
+
+
+class Timeless(Scribble):
+    """A live game that does not keep time."""
+
+    @override
+    def clock(self, state: Board, elapsed: float) -> Board:
+        return state
+
+
+async def test_viewers_are_not_told_when_nothing_moves() -> None:
+    match = Match(Timeless(), [Idle(), Idle()], max_turns=3)
+    notified: list[int] = []
+    match.subscribe(lambda m: notified.append(m.turn))
+    task = match.start()
+    await asyncio.sleep(0.1)
+    # Both idle seats answered once; their second answers never come.
+    count = len(notified)
+    await asyncio.sleep(0.1)
+    assert len(notified) == count
+    match.abort()
+    await task

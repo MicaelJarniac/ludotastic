@@ -301,6 +301,7 @@ class Match:
         try:
             while True:
                 self._wake.clear()
+                before = self.state
                 self.state = self.game.clock(self.state, self._elapsed())
                 if (outcome := self.game.outcome(self.state)) is not None:
                     return outcome
@@ -308,7 +309,8 @@ class Match:
                     return self.game.out_of_turns(self.state)
                 thinking = set(self.thinking)
                 wake = self._ask_live(live)
-                if self.thinking != thinking:
+                # Viewers follow the clock too, such as a countdown.
+                if self.thinking != thinking or self.state != before:
                     await self._notify()
                 result = await self._wait_live(live, wake)
                 if isinstance(result, Outcome):
