@@ -432,3 +432,68 @@ def test_only_guessers_can_be_ai(service: MatchService) -> None:
             "pictionary",
             [AISpec(model="test", mode=ActionMode.RANK), BotSpec(bot="shapes")],
         )
+
+
+def test_every_word_has_real_sketches() -> None:
+    from ludotastic.games.pictionary.game import sketches  # noqa: PLC0415
+
+    bundle = sketches()
+    assert set(bundle) == set(WORDS)
+    for drawn in bundle.values():
+        assert len(drawn) >= 3
+        for sketch in drawn:
+            assert 0 < len(sketch) <= 20
+            assert all(0 <= v <= 255 for stroke in sketch for p in stroke for v in p)
+
+
+async def test_replay_bot_redraws_a_sketch_then_finishes() -> None:
+    from ludotastic.games.pictionary.game import ReplayBot, sketches  # noqa: PLC0415
+
+    game, state = fresh()
+    bot = game.bots()["quickdraw"]()
+    assert isinstance(bot, ReplayBot)
+    rng = random.Random()
+    drawn: list[object] = []
+    while True:
+        task = asyncio.create_task(bot.act(ctx(game, state, 0)))
+        done, _ = await asyncio.wait({task}, timeout=0.05)
+        if not done:
+            # All drawn: it waits for the round to end, instead of finishing.
+            task.cancel()
+            break
+        decision = task.result()
+        drawn.append(decision.action.root.points)  # type: ignore[ty:unresolved-attribute]
+        assert decision.details["stroke"] == len(drawn)
+        state = game.apply(state, {0: decision.action}, rng)  # type: ignore[ty:invalid-argument-type]
+    assert tuple(drawn) in sketches()[state.answer]
+    with pytest.raises(ValueError, match="only draws"):
+        await bot.act(ctx(game, state, 1))
+
+
+async def test_replay_bot_starts_over_each_round() -> None:
+    from ludotastic.games.pictionary.game import ReplayBot  # noqa: PLC0415
+
+    game, state = fresh()
+    bot = ReplayBot()
+    first = await bot.act(ctx(game, state, 0))
+    _, other = fresh(seed=1)
+    second = await bot.act(ctx(game, other, 0))
+    assert first.details["of"] >= 1
+    assert second.details["stroke"] == 1
+
+
+async def test_jev_against_a_replayed_sketch() -> None:
+    from ludotastic.games.pictionary.game import ReplayBot  # noqa: PLC0415
+
+    game, state = fresh(2)
+    drawer = ReplayBot()
+    drawer.min_interval = 0.01
+    seer = Seer(state.answer)
+    guesser = AIPlayer(seer, mode=ActionMode.RANK, view=View.IMAGE)
+    match = Match(game, [drawer, guesser], seed=0)
+    match.state = match.state.model_copy(update={"limit": 0.5})
+    outcome = await match.run()
+    assert outcome is not None
+    assert outcome.reason.startswith("Time ran out")
+    # One picture per guess: asked again after every stroke.
+    assert seer.images == len([m for m in match.history if m.seat == 1])

@@ -45,10 +45,34 @@ probabilities are drawn as bars behind each word, so you can watch it change its
 mind stroke by stroke.
 
 Only guessers can be AI players (`Game.ai_seats`): the new-match form offers no AI
-for the drawer, and the API refuses one. The drawer is a person or the `shapes`
-bot.
-That bot draws four simple shapes, one a second, whatever the word, so it only
-serves as a baseline.
+for the drawer, and the API refuses one. The drawer is a person or a bot.
+
+- `quickdraw` redraws a real person's sketch of the word, one stroke a second,
+  then leaves the guessers the rest of the round. Which sketch it picks follows
+  the match's seed, so a Jev-versus-language-model match with nobody drawing can
+  be repeated exactly.
+- `shapes` draws four simple shapes whatever the word, so it only serves as a
+  baseline.
+
+![The quickdraw bot partway through a sword, with a person's ranking](pictionary-quickdraw.png)
+
+### The sketches
+
+The `quickdraw` bot's sketches come from Google's
+[Quick, Draw! dataset](https://github.com/googlecreativelab/quickdraw-dataset),
+made available by Google under the
+[Creative Commons Attribution 4.0 International license](https://creativecommons.org/licenses/by/4.0/).
+Ludotastic bundles 5 sketches of each word, about 140 KB, in
+`src/ludotastic/games/pictionary/sketches.json`. They are the first drawings
+in each category's simplified data that Quick, Draw! recognized and that have at
+most 20 strokes. They are otherwise unchanged, apart from being thinned to at
+most 200 points a stroke.
+
+To fetch them again, for example after changing the words:
+
+```bash
+uv run python scripts/fetch_quickdraw.py
+```
 
 ## Fair play
 
@@ -62,4 +86,9 @@ never which words.
 uv run ludotastic serve   # then Games, Pictionary
 ```
 
-Pick yourself as the drawer, and Jev and a language model as guessers.
+Pick yourself or the `quickdraw` bot as the drawer, and Jev and a language model
+as guessers. With the bot drawing, it also runs without the UI:
+
+```bash
+uv run ludotastic play pictionary bot:quickdraw typesafe:jev-latest openai:gpt-6.1-sol --no-swap
+```

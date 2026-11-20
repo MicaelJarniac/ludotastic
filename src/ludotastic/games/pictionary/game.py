@@ -14,15 +14,20 @@ __all__: tuple[str, ...] = (
     "PictionaryState",
     "Point",
     "Rank",
+    "ReplayBot",
     "ShapesBot",
     "Stroke",
     "simplify",
 )
 
+import asyncio
+import json
 import math
 import random
 from collections.abc import Hashable, Mapping, Sequence
-from typing import TYPE_CHECKING, Annotated, Final, Literal, override
+from functools import cache
+from importlib.resources import files
+from typing import TYPE_CHECKING, Annotated, Final, Literal, cast, override
 
 from annotated_types import Len, MinLen
 from pydantic import BaseModel, ConfigDict, Field, RootModel
@@ -481,7 +486,7 @@ class Pictionary(Game[PictionaryState, PictionaryAction]):
 
     @override
     def bots(self) -> Mapping[str, BotFactory]:
-        return {"shapes": ShapesBot}
+        return {"quickdraw": ReplayBot, "shapes": ShapesBot}
 
     @override
     def renderer(self) -> Renderer:
@@ -535,3 +540,62 @@ class ShapesBot(Player):
         order = list(state.words)
         ctx.rng.shuffle(order)
         return Decision(action=_act(Rank(order=tuple(order))))
+
+
+@cache
+def sketches() -> Mapping[str, tuple[tuple[Stroke, ...], ...]]:
+    """Real people's sketches of every word, from Google's Quick, Draw! dataset.
+
+    A few per word, all of which Quick, Draw! recognized. The dataset is by
+    Google, under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/):
+    https://github.com/googlecreativelab/quickdraw-dataset
+    """
+    raw = json.loads(files(__package__).joinpath("sketches.json").read_text())
+    data = cast("dict[str, list[list[list[list[int]]]]]", raw)
+    return {
+        word: tuple(tuple(simplify(stroke) for stroke in sketch) for sketch in drawn)
+        for word, drawn in data.items()
+    }
+
+
+class ReplayBot(Player):
+    """Redraws a real person's sketch of the word, stroke by stroke, then waits.
+
+    The sketches come from Google's Quick, Draw! dataset; see
+    [`sketches`][ludotastic.games.pictionary.game.sketches]. Which sketch is
+    replayed follows the match's seed, so matches can be repeated.
+    """
+
+    kind = PlayerKind.BOT
+    min_interval = 1.0
+
+    def __init__(self, name: str = "quickdraw") -> None:
+        """Name the player."""
+        super().__init__(name)
+        self._sketch: tuple[Stroke, ...] | None = None
+
+    @override
+    async def act(self, ctx: TurnContext) -> Decision:
+        """Add the sketch's next stroke, one a second.
+
+        Once it is all drawn, it waits for the round to end rather than
+        finishing, so guessers always get the whole round to make up their
+        minds.
+
+        Raises:
+            ValueError: If asked to guess: the replay bot only draws.
+        """
+        state = ctx.state
+        assert isinstance(state, PictionaryState)  # noqa: S101
+        if ctx.player != 0:
+            msg = "The quickdraw bot only draws"
+            raise ValueError(msg)
+        if self._sketch is None or not state.strokes:
+            self._sketch = ctx.rng.choice(sketches()[state.answer])
+        drawn = len(state.strokes)
+        if drawn >= len(self._sketch):
+            await asyncio.Event().wait()  # Until the round ends and this is cancelled.
+        return Decision(
+            action=_act(Draw(points=self._sketch[drawn])),
+            details={"stroke": drawn + 1, "of": len(self._sketch)},
+        )
