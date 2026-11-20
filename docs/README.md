@@ -197,4 +197,9 @@ More details can be found in [CONTRIBUTING](CONTRIBUTING.md).
 ## License
 [MIT](../LICENSE)
 
+Pictionary's bundled sketches are from Google's
+[Quick, Draw! dataset](https://github.com/googlecreativelab/quickdraw-dataset),
+under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); see
+`src/ludotastic/games/pictionary/NOTICE.md`.
+
 This project was created with the [MicaelJarniac/crustypy](https://github.com/MicaelJarniac/crustypy) template.

@@ -139,6 +139,8 @@ unfixable = ["ERA001"]
   "S101", "PLR2004", "S106", "S107", "D101", "D102", "D103", "ARG001", "ARG005",
   "E501", "ASYNC110",
 ]
+# Scripts run on their own, not as part of a package.
+"scripts/*" = ["INP001"]
 # Typer reads options from the signature.
 "src/ludotastic/cli.py" = ["FBT002", "PLR0913", "PLR0917"]
 
@@ -152,7 +154,7 @@ convention = "google"
 docstring-code-format = true
 
 [tool.ty.src]
-include = ["src", "docs", "tests", "noxfile.py"]
+include = ["src", "docs", "tests", "scripts", "noxfile.py"]
 
 [tool.ty.rules]
 # Fail on every diagnostic, not just the ones ty reports as errors by default.
