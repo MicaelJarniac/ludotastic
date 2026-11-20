@@ -127,6 +127,7 @@ nav:
     - "Connect Four: rules, AI and bots": notes/connect-four.md
     - "Tic-Tac-Toe: board format for AI": notes/tictactoe-observation.md
     - "Rock-Paper-Scissors: rules, AI and bot": notes/rock-paper-scissors.md
+    - "Pictionary: live guessing, ranked": notes/pictionary.md
 
 extra:
   social:

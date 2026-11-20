@@ -43,6 +43,7 @@ ludotastic = "ludotastic.cli:main"
 [project.entry-points."ludotastic.games"]
 2048 = "ludotastic.games.twentyfortyeight:TwentyFortyEight"
 connect-four = "ludotastic.games.connect_four:ConnectFour"
+pictionary = "ludotastic.games.pictionary:Pictionary"
 rock-paper-scissors = "ludotastic.games.rock_paper_scissors:RockPaperScissors"
 snake = "ludotastic.games.snake:Snake"
 tictactoe = "ludotastic.games.tictactoe:TicTacToe"
