@@ -229,6 +229,10 @@ def match_view(match: Match) -> None:  # noqa: C901, PLR0915
         if match.status is MatchStatus.ABORTED:
             return f"Aborted: {match.error}"
         if match.outcome is not None:
+            if game.num_players == 1:
+                # A lone seat cannot win or draw against anyone; the reason says
+                # how it went.
+                return match.outcome.reason
             winners = match.outcome.winners
             who = (
                 " and ".join(game.player_label(w) for w in winners) + " won"

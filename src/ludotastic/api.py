@@ -63,7 +63,7 @@ class MatchView(BaseModel):
             turn=match.turn,
             seats=match.seats,
             to_move=thinking,
-            state=match.state.model_dump(mode="json"),
+            state=game.public_state(match.state).model_dump(mode="json"),
             legal_actions={
                 seat: [
                     a.model_dump(mode="json")

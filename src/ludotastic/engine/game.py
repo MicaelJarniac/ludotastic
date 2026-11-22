@@ -310,6 +310,14 @@ class Game[S: BaseModel, A: BaseModel](ABC):
         """
         return Outcome.draw(self.num_players, "Turn limit reached")
 
+    def public_state(self, state: S) -> S:
+        """`state` with what no player may see yet left out, for the API.
+
+        The whole state by default. Games with hidden information, such as
+        where the mines are, override this so API clients cannot read it.
+        """
+        return state
+
     @abstractmethod
     def observe(self, state: S, player: Seat) -> str:
         """Describe `state` in text, as `player` sees it.
