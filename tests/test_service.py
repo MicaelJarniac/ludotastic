@@ -3,10 +3,18 @@
 __all__: tuple[str, ...] = ()
 
 import asyncio
+from typing import override
 
 import pytest
 
-from ludotastic import ActionMode, AIPlayer, HumanPlayer, MatchStatus, RandomBot
+from ludotastic import (
+    ActionMode,
+    AIPlayer,
+    HumanPlayer,
+    MatchStatus,
+    PlayerKind,
+    RandomBot,
+)
 from ludotastic.games.tictactoe import MinimaxBot
 from ludotastic.service import AISpec, BotSpec, HumanSpec, MatchService
 from ludotastic.settings import Settings, get_settings
@@ -190,3 +198,26 @@ async def test_replay_aborted(service: MatchService) -> None:
     assert replayed.status is MatchStatus.ABORTED
     assert replayed.outcome is None
     assert replayed.error == "bye"
+
+
+def test_games_can_keep_seats_from_ai(service: MatchService) -> None:
+    from ludotastic.engine.registry import GameRegistry  # noqa: PLC0415
+    from ludotastic.games.tictactoe import TicTacToe  # noqa: PLC0415
+
+    class PeopleFirst(TicTacToe):
+        info = TicTacToe.info.model_copy(update={"id": "people-first"})
+
+        @override
+        def ai_seats(self) -> frozenset[int]:
+            return frozenset({1})
+
+    games = GameRegistry(group="ludotastic.tests.none")
+    games.register(PeopleFirst)
+    service.games = games
+    assert TicTacToe().ai_seats() == {0, 1}
+    with pytest.raises(ValueError, match="An AI cannot play X in Tic-Tac-Toe"):
+        service.create("people-first", [AISpec(model="test"), BotSpec()])
+    match = service.create(
+        "people-first", [BotSpec(), AISpec(model="test")], start=False
+    )
+    assert match.players[1].kind is PlayerKind.AI

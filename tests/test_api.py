@@ -42,6 +42,7 @@ async def test_games(client: httpx2.AsyncClient) -> None:
         "2048",
         "connect-four",
         "minesweeper",
+        "pictionary",
         "rock-paper-scissors",
         "snake",
         "tictactoe",

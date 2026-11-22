@@ -13,13 +13,13 @@ __all__: tuple[str, ...] = (
 import json
 import random
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Mapping, Sequence
 from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Self, cast
 
 from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
 
-from ludotastic.types import PositiveFloat, PositiveInt, Seat
+from ludotastic.types import NonNegativeFloat, PositiveFloat, PositiveInt, Seat
 
 if TYPE_CHECKING:
     from pydantic_ai import Tool
@@ -42,6 +42,16 @@ class Timing(StrEnum):
     would miss nearly every tick.
     """
 
+    LIVE = "live"
+    """Every player acts whenever it is ready, without waiting for the others.
+
+    Each action is applied as soon as it arrives, and the game keeps time
+    through [`clock`][ludotastic.Game.clock]. A player is asked again only once
+    its [view of the game][ludotastic.Game.view_key] has changed, and no sooner
+    than its [`min_interval`][ludotastic.Player.min_interval] allows, so a fast
+    model updates often while a slow one is never waited for.
+    """
+
 
 class ActionMode(StrEnum):
     """How an AI player is asked for its action."""
@@ -61,6 +71,18 @@ class ActionMode(StrEnum):
 
     TOOLS = "tools"
     """Inspect the game through tools, then submit the game's action model."""
+
+    RANK = "rank"
+    """Order a set of options, likeliest first.
+
+    For games whose action is an ordering, such as guesses from likeliest to
+    least likely, which is far too many actions to list. Decision models such as
+    Jev pick one option, and their probabilities give the order. Language models
+    fill in the whole order, which is sent back to retry unless it holds every
+    option exactly once. Games offering this mode implement
+    [`rank_options`][ludotastic.Game.rank_options] and
+    [`rank_action`][ludotastic.Game.rank_action].
+    """
 
 
 class View(StrEnum):
@@ -98,9 +120,19 @@ class GameInfo(BaseModel):
     timing: Timing = Timing.STEP
     """Whether the game waits for players or runs on a clock."""
     tick_seconds: PositiveFloat = 1.0
-    """Length of a tick, for games with [`Timing.TICK`][ludotastic.Timing.TICK]."""
+    """Length of a tick, for games with [`Timing.TICK`][ludotastic.Timing.TICK].
+
+    In [`Timing.LIVE`][ludotastic.Timing.LIVE] games, how often the clock moves
+    on while nobody acts.
+    """
     action_modes: tuple[ActionMode, ...] = tuple(ActionMode)
     """The ways an AI can be asked to act, the first being the default."""
+    views: tuple[View, ...] = tuple(View)
+    """What an AI may be shown of the game, the first being the default.
+
+    Views other than [text][ludotastic.View.TEXT] also need the game to
+    [draw itself][ludotastic.Game.snapshot].
+    """
     tags: tuple[str, ...] = ()
     """Free-form tags, such as `classic` or `real-time`."""
 
@@ -111,6 +143,9 @@ class GameInfo(BaseModel):
             raise ValueError(msg)
         if not self.action_modes:
             msg = "at least one action mode is required"
+            raise ValueError(msg)
+        if not self.views:
+            msg = "at least one view is required"
             raise ValueError(msg)
         return self
 
@@ -227,7 +262,12 @@ class Game[S: BaseModel, A: BaseModel](ABC):
 
     @abstractmethod
     def legal_actions(self, state: S, player: Seat) -> Sequence[A]:
-        """Every action `player` may take in `state`."""
+        """Every action `player` may take in `state`.
+
+        Games whose actions cannot all be listed, such as orderings or free-hand
+        strokes, list a useful few here and override
+        [`is_legal`][ludotastic.Game.is_legal] to accept the rest.
+        """
 
     @abstractmethod
     def apply(self, state: S, actions: Mapping[int, A], rng: random.Random) -> S:
@@ -241,6 +281,27 @@ class Game[S: BaseModel, A: BaseModel](ABC):
     @abstractmethod
     def outcome(self, state: S) -> Outcome | None:
         """The outcome if the match is over, otherwise `None`."""
+
+    def clock(self, state: S, elapsed: NonNegativeFloat) -> S:
+        """Bring `state` up to `elapsed` seconds since the match started.
+
+        Only [`Timing.LIVE`][ludotastic.Timing.LIVE] games are clocked: before
+        every action, and every [tick][ludotastic.GameInfo.tick_seconds] in
+        between. Games that keep time, such as a round with a time limit, store
+        it in the state here. Defaults to leaving the state as it is.
+        """
+        del elapsed
+        return state
+
+    def view_key(self, state: S, player: Seat) -> Hashable:
+        """What `player`'s view of `state` depends on, in live games.
+
+        A player in a [`Timing.LIVE`][ludotastic.Timing.LIVE] game is asked
+        again only once this changes. Defaults to the
+        [observation][ludotastic.Game.observe]; override it to leave out what
+        should not trigger a new answer, such as the time.
+        """
+        return self.observe(state, player)
 
     def out_of_turns(self, state: S) -> Outcome:  # noqa: ARG002
         """The outcome when a match reaches its turn limit.
@@ -284,6 +345,42 @@ class Game[S: BaseModel, A: BaseModel](ABC):
         """Whether `player` may take `action` in `state`."""
         return action in self.legal_actions(state, player)
 
+    def rank_options(self, state: S, player: Seat) -> Mapping[str, str]:
+        """The options `player` orders in the [rank mode][ludotastic.ActionMode.RANK].
+
+        Keyed by a short, unique label, with a description of each. Games that
+        offer the rank mode override this, and
+        [`rank_action`][ludotastic.Game.rank_action].
+
+        Raises:
+            NotImplementedError: If the game does not offer the rank mode.
+        """
+        del state, player
+        msg = f"{self.info.name} does not offer the {ActionMode.RANK} mode"
+        raise NotImplementedError(msg)
+
+    def rank_question(self, state: S, player: Seat) -> str:
+        """What the [rank mode][ludotastic.ActionMode.RANK] asks `player`.
+
+        Phrased as picking the likeliest option, which is what a decision model
+        answers; its probabilities give the rest of the order.
+        """
+        del state
+        return f"Which option is likeliest, for {self.player_label(player)}?"
+
+    def rank_action(self, state: S, player: Seat, order: Sequence[str]) -> A:
+        """The action that puts the options in `order`, by their labels.
+
+        `order` holds every label from
+        [`rank_options`][ludotastic.Game.rank_options] exactly once.
+
+        Raises:
+            NotImplementedError: If the game does not offer the rank mode.
+        """
+        del state, player, order
+        msg = f"{self.info.name} does not offer the {ActionMode.RANK} mode"
+        raise NotImplementedError(msg)
+
     def default_action(self, state: S, player: Seat) -> A | None:  # noqa: ARG002
         """The action taken for a player that was too slow on a tick.
 
@@ -294,6 +391,14 @@ class Game[S: BaseModel, A: BaseModel](ABC):
     def player_label(self, player: Seat) -> str:
         """A short name for a seat, such as `X` or `Black`."""
         return f"Player {player + 1}"
+
+    def ai_seats(self) -> frozenset[Seat]:
+        """The seats an AI player may take; every seat by default.
+
+        Games restrict this when a seat's job is something an AI cannot be
+        asked for, such as drawing.
+        """
+        return frozenset(range(self.num_players))
 
     def bots(self) -> Mapping[str, BotFactory]:
         """Scripted players specific to this game, by name.
@@ -339,6 +444,7 @@ class Game[S: BaseModel, A: BaseModel](ABC):
 
         Import NiceGUI code lazily in here, so the game logic stays usable
         without loading the UI. Games without a renderer get a generic,
-        text-based view.
+        text-based view. See [`Renderer`][ludotastic.Renderer] for how a
+        renderer can update in place instead of drawing again.
         """
         return None

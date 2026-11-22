@@ -1,6 +1,6 @@
 [project]
 name = "ludotastic"
-version = "0.4.0"
+version = "0.5.0"
 description = "Where humans and AI come to play."
 authors = [
   {name = "Micael Jarniac", email = "micael@jarniac.dev"},
@@ -43,6 +43,7 @@ ludotastic = "ludotastic.cli:main"
 [project.entry-points."ludotastic.games"]
 2048 = "ludotastic.games.twentyfortyeight:TwentyFortyEight"
 connect-four = "ludotastic.games.connect_four:ConnectFour"
+pictionary = "ludotastic.games.pictionary:Pictionary"
 rock-paper-scissors = "ludotastic.games.rock_paper_scissors:RockPaperScissors"
 snake = "ludotastic.games.snake:Snake"
 tictactoe = "ludotastic.games.tictactoe:TicTacToe"
@@ -139,6 +140,8 @@ unfixable = ["ERA001"]
   "S101", "PLR2004", "S106", "S107", "D101", "D102", "D103", "ARG001", "ARG005",
   "E501", "ASYNC110",
 ]
+# Scripts run on their own, not as part of a package.
+"scripts/*" = ["INP001"]
 # Typer reads options from the signature.
 "src/ludotastic/cli.py" = ["FBT002", "PLR0913", "PLR0917"]
 
@@ -152,7 +155,7 @@ convention = "google"
 docstring-code-format = true
 
 [tool.ty.src]
-include = ["src", "docs", "tests", "noxfile.py"]
+include = ["src", "docs", "tests", "scripts", "noxfile.py"]
 
 [tool.ty.rules]
 # Fail on every diagnostic, not just the ones ty reports as errors by default.

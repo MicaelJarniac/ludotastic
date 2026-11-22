@@ -3,7 +3,7 @@
 __all__: tuple[str, ...] = ()
 
 import asyncio
-from typing import cast
+from typing import cast, override
 
 import pytest
 from nicegui import ui
@@ -11,6 +11,7 @@ from nicegui.elements.dark_mode import DarkMode
 from nicegui.testing import User
 
 from ludotastic.engine.match import Match, MatchStatus
+from ludotastic.engine.players import PlayerKind
 from ludotastic.games.tictactoe import TicTacToeState
 from ludotastic.service import BotSpec, HumanSpec, MatchService
 
@@ -292,3 +293,51 @@ async def test_dark_mode_toggle(
                 break
             await asyncio.sleep(0.01)
         assert dark.value is expected
+
+
+async def test_renderers_can_update_in_place(user: User, service: MatchService) -> None:
+    match = service.create("tictactoe", [HumanSpec(), BotSpec()], start=False)
+    drawn: list[str] = []
+    updates: list[int] = []
+
+    def renderer(ctx: object) -> object:
+        drawn.append("drawn")
+        ui.label("in place")
+        return lambda: updates.append(len(match.history))
+
+    match.game.renderer = lambda: renderer
+    match.start()
+    await user.open(f"/match/{match.id}")
+    await user.should_see("in place")
+    match.submit(0, {"cell": 4})
+    for _ in range(100):
+        if updates and updates[-1] >= 1:
+            break
+        await asyncio.sleep(0.01)
+    assert drawn == ["drawn"]
+    assert updates[-1] >= 1
+
+
+async def test_seats_kept_from_ai_offer_no_ai(
+    user: User, service: MatchService
+) -> None:
+    from ludotastic.engine.registry import GameRegistry  # noqa: PLC0415
+    from ludotastic.games.tictactoe import TicTacToe  # noqa: PLC0415
+
+    class PeopleFirst(TicTacToe):
+        info = TicTacToe.info.model_copy(update={"id": "people-first"})
+
+        @override
+        def ai_seats(self) -> frozenset[int]:
+            return frozenset({1})
+
+    games = GameRegistry(group="ludotastic.tests.none")
+    games.register(PeopleFirst)
+    service.games = games
+    await user.open("/play/people-first")
+    first = user.find(marker="kind-0").elements.pop()
+    second = user.find(marker="kind-1").elements.pop()
+    assert isinstance(first, ui.toggle)
+    assert isinstance(second, ui.toggle)
+    assert PlayerKind.AI not in first.options
+    assert PlayerKind.AI in second.options

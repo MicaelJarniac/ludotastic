@@ -2,6 +2,57 @@
 
 <!-- version list -->
 
+## v0.5.0 (2026-11-22)
+
+### Bug Fixes
+
+- Let games keep seats from AI players, and close live waits cleanly
+  ([#27](https://github.com/MicaelJarniac/ludotastic/pull/27),
+  [`396c774`](https://github.com/MicaelJarniac/ludotastic/commit/396c7745daeadfdddac6663ce65307d4f7fb8000))
+
+- Tell viewers of a live match when its clock moves
+  ([#27](https://github.com/MicaelJarniac/ludotastic/pull/27),
+  [`396c774`](https://github.com/MicaelJarniac/ludotastic/commit/396c7745daeadfdddac6663ce65307d4f7fb8000))
+
+- **pictionary**: Keep the drawer's seat from AI players
+  ([#28](https://github.com/MicaelJarniac/ludotastic/pull/28),
+  [`23a307e`](https://github.com/MicaelJarniac/ludotastic/commit/23a307e88453618e74907adea919c265f27ddfcd))
+
+### Documentation
+
+- Add gabrieldnsilva as a contributor for code, test, and doc
+  ([#25](https://github.com/MicaelJarniac/ludotastic/pull/25),
+  [`093d219`](https://github.com/MicaelJarniac/ludotastic/commit/093d2199fb992d77b12e97f8ec80c4d1527c812b))
+
+- Update .all-contributorsrc [skip ci] ([#25](https://github.com/MicaelJarniac/ludotastic/pull/25),
+  [`093d219`](https://github.com/MicaelJarniac/ludotastic/commit/093d2199fb992d77b12e97f8ec80c4d1527c812b))
+
+- Update docs/README.md [skip ci] ([#25](https://github.com/MicaelJarniac/ludotastic/pull/25),
+  [`093d219`](https://github.com/MicaelJarniac/ludotastic/commit/093d2199fb992d77b12e97f8ec80c4d1527c812b))
+
+- **pictionary**: Show a round in progress
+  ([#28](https://github.com/MicaelJarniac/ludotastic/pull/28),
+  [`23a307e`](https://github.com/MicaelJarniac/ludotastic/commit/23a307e88453618e74907adea919c265f27ddfcd))
+
+### Features
+
+- Add live timing and the rank action mode
+  ([#27](https://github.com/MicaelJarniac/ludotastic/pull/27),
+  [`396c774`](https://github.com/MicaelJarniac/ludotastic/commit/396c7745daeadfdddac6663ce65307d4f7fb8000))
+
+- Let games choose the views they offer, and the default
+  ([#27](https://github.com/MicaelJarniac/ludotastic/pull/27),
+  [`396c774`](https://github.com/MicaelJarniac/ludotastic/commit/396c7745daeadfdddac6663ce65307d4f7fb8000))
+
+- **pictionary**: Add a bot that redraws real Quick, Draw! sketches
+  ([#29](https://github.com/MicaelJarniac/ludotastic/pull/29),
+  [`38a8e17`](https://github.com/MicaelJarniac/ludotastic/commit/38a8e1753cc159cd74484bbdb58cb7903ab3caea))
+
+- **pictionary**: Add Pictionary, with live-ranked guesses
+  ([#28](https://github.com/MicaelJarniac/ludotastic/pull/28),
+  [`23a307e`](https://github.com/MicaelJarniac/ludotastic/commit/23a307e88453618e74907adea919c265f27ddfcd))
+
+
 ## v0.4.0 (2026-11-16)
 
 ### Bug Fixes

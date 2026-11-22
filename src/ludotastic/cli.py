@@ -70,7 +70,7 @@ def _spec(text: str) -> BotSpec | AISpec:
     return AISpec(
         model=model,
         mode=ActionMode(mode) if mode else None,
-        view=View(view) if view else View.TEXT,
+        view=View(view) if view else None,
     )
 
 

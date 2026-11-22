@@ -93,13 +93,14 @@ class _SeatForm:
 
     def __init__(self, service: MatchService, game: Game[Any, Any], seat: int) -> None:
         settings = service.settings
-        default_kind = PlayerKind.HUMAN if seat == 0 else PlayerKind.AI
+        ai_allowed = seat in game.ai_seats()
+        default_kind = PlayerKind.AI if seat != 0 and ai_allowed else PlayerKind.HUMAN
+        kinds = {PlayerKind.HUMAN: "Human", PlayerKind.BOT: "Bot"}
+        if ai_allowed:
+            kinds[PlayerKind.AI] = "AI"
         with ui.card().classes("w-80"):
             ui.label(game.player_label(seat)).classes("text-lg font-bold")
-            self.kind = ui.toggle(
-                {PlayerKind.HUMAN: "Human", PlayerKind.BOT: "Bot", PlayerKind.AI: "AI"},
-                value=default_kind,
-            ).mark(f"kind-{seat}")
+            self.kind = ui.toggle(kinds, value=default_kind).mark(f"kind-{seat}")
             self.name = ui.input("Name", value="Human").classes("w-full")
             self.name.bind_visibility_from(self.kind, "value", value=PlayerKind.HUMAN)
             bots = bot_names(game)
@@ -122,17 +123,18 @@ class _SeatForm:
                 self.mode = ui.select(
                     {"": "Game default", **modes}, value="", label="Action mode"
                 ).classes("w-full")
-                views = {
+                names = {
                     View.TEXT: "Text",
                     View.IMAGE: "Picture",
                     View.BOTH: "Text and picture",
                 }
+                views = {v: names[v] for v in game.info.views}
                 self.view = (
-                    ui.select(views, value=View.TEXT, label="What the AI sees")
+                    ui.select(views, value=game.info.views[0], label="What the AI sees")
                     .classes("w-full")
                     .mark(f"view-{seat}")
                 )
-                self.view.set_visibility(game.can_draw)
+                self.view.set_visibility(game.can_draw and len(views) > 1)
                 self.fallback = ui.select(
                     ["", *settings.suggested_models],
                     value="",

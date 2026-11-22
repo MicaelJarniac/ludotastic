@@ -18,6 +18,10 @@ This page provides detailed API documentation for Ludotastic.
 
 ::: ludotastic.games.connect_four
 
+## Pictionary
+
+::: ludotastic.games.pictionary
+
 ## Rock-Paper-Scissors
 
 ::: ludotastic.games.rock_paper_scissors

@@ -9,9 +9,11 @@ __all__: tuple[str, ...] = (
 
 import asyncio
 import contextlib
+import math
 import random
 import uuid
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Hashable, Sequence
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
@@ -63,9 +65,29 @@ class MoveRecord(BaseModel):
     """Whether the engine chose this action, because the player was too slow."""
     usage: Usage | None = None
     """What the move cost, for players that use a model."""
+    at: NonNegativeFloat | None = None
+    """When the move was applied, in seconds since the match started.
+
+    Only recorded in [`Timing.LIVE`][ludotastic.Timing.LIVE] games, whose
+    state depends on the time.
+    """
 
 
 type Listener = Callable[[Match], Awaitable[None] | None]
+
+
+@dataclass
+class _Live:
+    """What a live match keeps track of for each seat."""
+
+    tasks: dict[int, asyncio.Task[Decision]] = field(default_factory=dict)
+    """The requests out, by seat."""
+    asked_at: dict[int, float] = field(default_factory=dict)
+    """When each seat was last asked, in seconds since the start."""
+    contexts: dict[int, TurnContext] = field(default_factory=dict)
+    """What each seat was last asked with."""
+    views: dict[int, Hashable] = field(default_factory=dict)
+    """Each seat's view of the game when it was last asked."""
 
 
 class Match:
@@ -170,10 +192,13 @@ class Match:
     def submit(self, seat: int, action: BaseModel | dict[str, Any]) -> None:
         """Hand in an action for a human seat.
 
+        In a [`Timing.LIVE`][ludotastic.Timing.LIVE] game, the action is applied
+        at once.
+
         Raises:
             TypeError: If the seat is not a human player.
-            ValueError: If a step-based game is not waiting on that seat, or the
-                action is illegal.
+            ValueError: If a step-based or live game is not waiting on that
+                seat, or the action is illegal.
         """
         player = self.players[seat]
         if not isinstance(player, HumanPlayer):
@@ -181,13 +206,17 @@ class Match:
             raise TypeError(msg)
         if not isinstance(action, BaseModel):
             action = self.game.parse_action(action)
-        if self.game.info.timing is Timing.STEP:
+        if self.game.info.timing is not Timing.TICK:
             if seat not in self.thinking:
                 msg = f"It is not seat {seat}'s turn"
                 raise ValueError(msg)
             if not self.game.is_legal(self.state, seat, action):
                 msg = "Illegal action"
                 raise ValueError(msg)
+        if self._wake is not None:
+            self._apply_live(seat, Decision(action=action), 0.0)
+            self._wake.set()
+            return
         player.submit(action)
 
     def abort(self, reason: str = "Aborted") -> None:
@@ -216,17 +245,10 @@ class Match:
         self.status = MatchStatus.RUNNING
         await self._notify()
         try:
-            while (outcome := self.game.outcome(self.state)) is None:
-                if self.max_turns is not None and self.turn >= self.max_turns:
-                    outcome = self.game.out_of_turns(self.state)
-                    break
-                forfeit = await self._play_turn()
-                if forfeit is not None:
-                    outcome = forfeit
-                    break
-                await self._notify()
-                if self.delay:
-                    await asyncio.sleep(self.delay)
+            if self.game.info.timing is Timing.LIVE:
+                outcome = await self._run_live()
+            else:
+                outcome = await self._run_turns()
         except asyncio.CancelledError:
             # `abort()` may have already set the status and reason.
             self.status = MatchStatus.ABORTED
@@ -250,6 +272,165 @@ class Match:
         self.finished_at = datetime.now(UTC)
         await self._notify()
         return outcome
+
+    async def _run_turns(self) -> Outcome:
+        """Play turn after turn, for step and tick games."""
+        while (outcome := self.game.outcome(self.state)) is None:
+            if self.max_turns is not None and self.turn >= self.max_turns:
+                return self.game.out_of_turns(self.state)
+            forfeit = await self._play_turn()
+            if forfeit is not None:
+                return forfeit
+            await self._notify()
+            if self.delay:
+                await asyncio.sleep(self.delay)
+        return outcome
+
+    async def _run_live(self) -> Outcome:
+        """Let every seat act whenever it is ready, for live games.
+
+        Each bot or AI seat has at most one request out at a time, and is asked
+        again once its view of the game changes, no sooner than its
+        `min_interval` allows. People's actions are applied the moment they
+        are [submitted][ludotastic.Match.submit]. Nobody waits for anybody else.
+        """
+        loop = asyncio.get_running_loop()
+        self._started = loop.time()
+        self._wake = asyncio.Event()
+        live = _Live()
+        try:
+            while True:
+                self._wake.clear()
+                before = self.state
+                self.state = self.game.clock(self.state, self._elapsed())
+                if (outcome := self.game.outcome(self.state)) is not None:
+                    return outcome
+                if self.max_turns is not None and self.turn >= self.max_turns:
+                    return self.game.out_of_turns(self.state)
+                thinking = set(self.thinking)
+                wake = self._ask_live(live)
+                # Viewers follow the clock too, such as a countdown.
+                if self.thinking != thinking or self.state != before:
+                    await self._notify()
+                result = await self._wait_live(live, wake)
+                if isinstance(result, Outcome):
+                    return result
+                if result:
+                    await self._notify()
+        finally:
+            self._wake = None
+            for seat, task in live.tasks.items():
+                self._drop(seat, task)
+            for task in live.tasks.values():
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await task
+
+    def _ask_live(self, live: _Live) -> float:
+        """Ask every seat due for a new answer; returns how long to wait at most."""
+        game = self.game
+        now = self._elapsed()
+        acting = set(game.to_move(self.state))
+        for seat in set(live.tasks) - acting:
+            self._drop(seat, live.tasks.pop(seat))
+        wake = game.info.tick_seconds
+        humans: set[int] = set()
+        for seat in sorted(acting - set(live.tasks)):
+            player = self.players[seat]
+            if isinstance(player, HumanPlayer):
+                humans.add(seat)
+                continue
+            view = game.view_key(self.state, seat)
+            if seat in live.views and live.views[seat] == view:
+                continue
+            ready = live.asked_at.get(seat, -math.inf) + player.min_interval
+            if now < ready:
+                wake = min(wake, ready - now)
+                continue
+            live.views[seat] = view
+            live.contexts[seat] = self._context(seat)
+            live.asked_at[seat] = now
+            live.tasks[seat] = asyncio.create_task(player.act(live.contexts[seat]))
+        self.thinking = set(live.tasks) | humans
+        return wake
+
+    async def _wait_live(self, live: _Live, wake: float) -> Outcome | bool:
+        """Wait for answers or a submission; a forfeit, or whether anything changed."""
+        assert self._wake is not None  # noqa: S101
+        woken = asyncio.create_task(self._wake.wait())
+        done, _ = await asyncio.wait(
+            {*live.tasks.values(), woken},
+            timeout=wake,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        woken.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await woken
+        changed = woken in done
+        for seat, task in sorted(live.tasks.items()):
+            if task in done:
+                del live.tasks[seat]
+                result = self._take_live(live, seat, task)
+                if isinstance(result, Outcome):
+                    return result
+                changed |= result
+        return changed
+
+    def _take_live(
+        self, live: _Live, seat: int, task: asyncio.Task[Decision]
+    ) -> Outcome | bool:
+        """Take one seat's answer: a forfeit, or whether it changed the game."""
+        game = self.game
+        label = game.player_label(seat)
+        if (error := task.exception()) is not None:
+            logger.warning("Seat {} failed in match {}: {!r}", seat, self.id, error)
+            reason = f"{label} failed: {type(error).__name__}: {error}"
+            return Outcome.forfeit(game.num_players, seat, reason)
+        decision = task.result()
+        if not game.is_legal(live.contexts[seat].state, seat, decision.action):
+            return Outcome.forfeit(
+                game.num_players, seat, f"{label} made an illegal move"
+            )
+        return self._apply_live(seat, decision, self._elapsed() - live.asked_at[seat])
+
+    _started: float = 0.0
+    _wake: asyncio.Event | None = None
+
+    def _elapsed(self) -> float:
+        return asyncio.get_running_loop().time() - self._started
+
+    def _apply_live(self, seat: int, decision: Decision, seconds: float) -> bool:
+        """Apply one seat's action in a live game; whether it still applied.
+
+        The game may have moved on while the seat decided, such as a round
+        ending, in which case the action is dropped.
+        """
+        at = self._elapsed()
+        self.state = self.game.clock(self.state, at)
+        if self.game.outcome(self.state) is not None or not self.game.is_legal(
+            self.state, seat, decision.action
+        ):
+            return False
+        self.state = self.game.apply(self.state, {seat: decision.action}, self.rng)
+        self._record(
+            seat, decision.action, seconds, decision.details, decision.usage, at=at
+        )
+        self._turns += 1
+        return True
+
+    def _drop(self, seat: int, task: asyncio.Task[Decision]) -> None:
+        """Stop waiting for a seat that no longer has to act."""
+        self.players[seat].cancel()
+        task.cancel()
+
+    def _context(self, seat: int) -> TurnContext:
+        return TurnContext(
+            game=self.game,
+            state=self.state,
+            player=seat,
+            legal_actions=list(self.game.legal_actions(self.state, seat)),
+            turn=self.turn,
+            rng=random.Random(self.rng.getrandbits(64)),
+        )
 
     async def _play_turn(self) -> Outcome | None:
         """Ask every seat to move, then advance the game; returns a forfeit, if any."""
@@ -298,17 +479,7 @@ class Match:
         tick: bots and AI players are always waited for. With a person
         playing, the tick lasts at least `deadline`.
         """
-        contexts = {
-            seat: TurnContext(
-                game=self.game,
-                state=self.state,
-                player=seat,
-                legal_actions=list(self.game.legal_actions(self.state, seat)),
-                turn=self.turn,
-                rng=random.Random(self.rng.getrandbits(64)),
-            )
-            for seat in seats
-        }
+        contexts = {seat: self._context(seat) for seat in seats}
         self.thinking = set(seats)
         await self._notify()
         loop = asyncio.get_running_loop()
@@ -364,6 +535,7 @@ class Match:
         usage: Usage | None = None,
         *,
         forced: bool = False,
+        at: float | None = None,
     ) -> None:
         self.history.append(
             MoveRecord(
@@ -375,5 +547,6 @@ class Match:
                 details=details,
                 forced=forced,
                 usage=usage,
+                at=None if at is None else round(at, 3),
             )
         )

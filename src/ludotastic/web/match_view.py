@@ -6,7 +6,8 @@ __all__: tuple[str, ...] = (
 )
 
 import json
-from typing import Any, Final, override
+from collections.abc import Callable
+from typing import Any, Final, cast, override
 
 from nicegui import ui
 from pydantic import BaseModel
@@ -154,9 +155,15 @@ def match_view(match: Match) -> None:  # noqa: C901, PLR0915
                     .mark("banner")
                 )
 
+            updater: Callable[[], object] | None = None
+
             @ui.refreshable
             def board() -> None:
-                renderer(ctx)
+                nonlocal updater
+                drawn = renderer(ctx)
+                updater = (
+                    cast("Callable[[], object]", drawn) if callable(drawn) else None
+                )
 
             board()
 
@@ -251,7 +258,10 @@ def match_view(match: Match) -> None:  # noqa: C901, PLR0915
             add="border-red-500" if failed else "",
             remove="" if failed else "border-red-500",
         )
-        board.refresh()
+        if updater is None:
+            board.refresh()
+        else:
+            updater()
         seats.refresh()
         count = len(match.history)
         moves_card.props(f"caption='{count} move{'' if count == 1 else 's'}'")

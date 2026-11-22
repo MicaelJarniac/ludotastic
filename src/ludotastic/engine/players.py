@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 from ludotastic.engine.game import Game
 from ludotastic.engine.usage import Usage
-from ludotastic.types import Count, Seat
+from ludotastic.types import Count, NonNegativeFloat, Seat
 
 
 class PlayerKind(StrEnum):
@@ -72,6 +72,12 @@ class Player(ABC):
 
     kind: PlayerKind
     """The kind of player."""
+    min_interval: NonNegativeFloat = 0.0
+    """The fewest seconds between two requests to this player, in live games.
+
+    Keeps a player that is quick to answer, such as a bot, from being asked
+    again at every change, and caps what a model costs.
+    """
 
     def __init__(self, name: str) -> None:
         """Name the player."""

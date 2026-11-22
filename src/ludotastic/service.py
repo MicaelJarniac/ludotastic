@@ -16,7 +16,7 @@ from typing import Annotated, Any, Literal, override
 from pydantic import BaseModel, Field
 
 from ludotastic.engine.ai import AIPlayer
-from ludotastic.engine.game import ActionMode, Game, Outcome, View
+from ludotastic.engine.game import ActionMode, Game, Outcome, Timing, View
 from ludotastic.engine.match import Match, MatchStatus, MoveRecord
 from ludotastic.engine.players import (
     Decision,
@@ -29,6 +29,7 @@ from ludotastic.engine.players import (
 from ludotastic.engine.registry import GameRegistry, registry
 from ludotastic.settings import Settings, get_settings
 from ludotastic.storage import MatchRecord, Store
+from ludotastic.types import NonNegativeFloat
 
 
 class HumanSpec(BaseModel):
@@ -58,8 +59,16 @@ class AISpec(BaseModel):
     instructions: str | None = None
     fallback_model: str | None = None
     """A model behind the main one, such as a language model behind Jev."""
-    view: View = View.TEXT
-    """Whether the model sees the game as text, a picture, or both."""
+    view: View | None = None
+    """Whether the model sees the game as text, a picture, or both.
+
+    Defaults to the game's preferred view.
+    """
+    min_interval: NonNegativeFloat | None = None
+    """The fewest seconds between two requests in live games.
+
+    Defaults to none for decision models and 2 seconds for language models.
+    """
 
 
 type PlayerSpec = Annotated[HumanSpec | BotSpec | AISpec, Field(discriminator="kind")]
@@ -88,8 +97,12 @@ def build_player(game: Game[Any, Any], spec: HumanSpec | BotSpec | AISpec) -> Pl
                 raise ValueError(msg)
             return factory()
         case _:
-            if spec.view is not View.TEXT and not game.can_draw:
-                msg = f"{game.info.name} cannot draw itself for the {spec.view} view"
+            view = spec.view or game.info.views[0]
+            if view is not View.TEXT and not game.can_draw:
+                msg = f"{game.info.name} cannot draw itself for the {view} view"
+                raise ValueError(msg)
+            if view not in game.info.views:
+                msg = f"{game.info.name} does not offer the {view} view"
                 raise ValueError(msg)
             if spec.mode is not None and spec.mode not in game.info.action_modes:
                 msg = f"{game.info.name} does not support the {spec.mode} mode"
@@ -100,7 +113,8 @@ def build_player(game: Game[Any, Any], spec: HumanSpec | BotSpec | AISpec) -> Pl
                 name=spec.name,
                 instructions=spec.instructions,
                 fallback_model=spec.fallback_model,
-                view=spec.view,
+                view=view,
+                min_interval=spec.min_interval,
             )
 
 
@@ -127,7 +141,8 @@ def replay(games: GameRegistry, record: MatchRecord) -> Match:
     """Rebuild a finished match from storage, for viewing.
 
     The moves are applied again from the initial state with the stored seed, so
-    the final state matches the original.
+    the final state matches the original. A live game's clock is brought to
+    when each move was made, and finally to when the match ended.
 
     Raises:
         KeyError: If the game is no longer installed.
@@ -139,9 +154,16 @@ def replay(games: GameRegistry, record: MatchRecord) -> Match:
     match.created_at = record.created_at
     match.finished_at = record.finished_at
     moves = [MoveRecord.model_validate(m) for m in record.history]
+    live = game.info.timing is Timing.LIVE
     for turn in sorted({m.turn for m in moves}):
-        actions = {m.seat: game.parse_action(m.action) for m in moves if m.turn == turn}
+        played = [m for m in moves if m.turn == turn]
+        if live and played[0].at is not None:
+            match.state = game.clock(match.state, played[0].at)
+        actions = {m.seat: game.parse_action(m.action) for m in played}
         match.state = game.apply(match.state, actions, match.rng)
+    if live and record.finished_at is not None:
+        ended = record.finished_at - record.created_at
+        match.state = game.clock(match.state, max(ended.total_seconds(), 0.0))
     match.history = moves
     match._turns = record.turns  # noqa: SLF001
     match.status = MatchStatus(record.status)
@@ -180,8 +202,15 @@ class MatchService:
 
         Raises:
             KeyError: If the game is unknown.
+            ValueError: If a seat cannot be played the way it was asked for,
+                such as an AI in a seat the game keeps for others.
         """
         game = self.games[game_id](len(players))
+        for seat, spec in enumerate(players):
+            if isinstance(spec, AISpec) and seat not in game.ai_seats():
+                label = game.player_label(seat)
+                msg = f"An AI cannot play {label} in {game.info.name}"
+                raise ValueError(msg)
         seated = [build_player(game, spec) for spec in players]
         has_human = any(isinstance(p, HumanPlayer) for p in seated)
         match = Match(
