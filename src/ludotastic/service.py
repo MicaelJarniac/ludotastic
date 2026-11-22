@@ -202,8 +202,15 @@ class MatchService:
 
         Raises:
             KeyError: If the game is unknown.
+            ValueError: If a seat cannot be played the way it was asked for,
+                such as an AI in a seat the game keeps for others.
         """
         game = self.games[game_id](len(players))
+        for seat, spec in enumerate(players):
+            if isinstance(spec, AISpec) and seat not in game.ai_seats():
+                label = game.player_label(seat)
+                msg = f"An AI cannot play {label} in {game.info.name}"
+                raise ValueError(msg)
         seated = [build_player(game, spec) for spec in players]
         has_human = any(isinstance(p, HumanPlayer) for p in seated)
         match = Match(

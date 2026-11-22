@@ -392,6 +392,14 @@ class Game[S: BaseModel, A: BaseModel](ABC):
         """A short name for a seat, such as `X` or `Black`."""
         return f"Player {player + 1}"
 
+    def ai_seats(self) -> frozenset[Seat]:
+        """The seats an AI player may take; every seat by default.
+
+        Games restrict this when a seat's job is something an AI cannot be
+        asked for, such as drawing.
+        """
+        return frozenset(range(self.num_players))
+
     def bots(self) -> Mapping[str, BotFactory]:
         """Scripted players specific to this game, by name.
 

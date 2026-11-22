@@ -363,6 +363,8 @@ class Match:
             return_when=asyncio.FIRST_COMPLETED,
         )
         woken.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await woken
         changed = woken in done
         for seat, task in sorted(live.tasks.items()):
             if task in done:

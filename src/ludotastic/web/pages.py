@@ -93,13 +93,14 @@ class _SeatForm:
 
     def __init__(self, service: MatchService, game: Game[Any, Any], seat: int) -> None:
         settings = service.settings
-        default_kind = PlayerKind.HUMAN if seat == 0 else PlayerKind.AI
+        ai_allowed = seat in game.ai_seats()
+        default_kind = PlayerKind.AI if seat != 0 and ai_allowed else PlayerKind.HUMAN
+        kinds = {PlayerKind.HUMAN: "Human", PlayerKind.BOT: "Bot"}
+        if ai_allowed:
+            kinds[PlayerKind.AI] = "AI"
         with ui.card().classes("w-80"):
             ui.label(game.player_label(seat)).classes("text-lg font-bold")
-            self.kind = ui.toggle(
-                {PlayerKind.HUMAN: "Human", PlayerKind.BOT: "Bot", PlayerKind.AI: "AI"},
-                value=default_kind,
-            ).mark(f"kind-{seat}")
+            self.kind = ui.toggle(kinds, value=default_kind).mark(f"kind-{seat}")
             self.name = ui.input("Name", value="Human").classes("w-full")
             self.name.bind_visibility_from(self.kind, "value", value=PlayerKind.HUMAN)
             bots = bot_names(game)
