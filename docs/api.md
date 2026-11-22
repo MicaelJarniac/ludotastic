@@ -18,6 +18,10 @@ This page provides detailed API documentation for Ludotastic.
 
 ::: ludotastic.games.connect_four
 
+## Minesweeper
+
+::: ludotastic.games.minesweeper
+
 ## Pictionary
 
 ::: ludotastic.games.pictionary

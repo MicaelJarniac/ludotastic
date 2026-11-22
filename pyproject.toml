@@ -43,11 +43,11 @@ ludotastic = "ludotastic.cli:main"
 [project.entry-points."ludotastic.games"]
 2048 = "ludotastic.games.twentyfortyeight:TwentyFortyEight"
 connect-four = "ludotastic.games.connect_four:ConnectFour"
+minesweeper = "ludotastic.games.minesweeper:Minesweeper"
 pictionary = "ludotastic.games.pictionary:Pictionary"
 rock-paper-scissors = "ludotastic.games.rock_paper_scissors:RockPaperScissors"
 snake = "ludotastic.games.snake:Snake"
 tictactoe = "ludotastic.games.tictactoe:TicTacToe"
-minesweeper = "ludotastic.games.minesweeper:Minesweeper"
 
 [build-system]
 requires = ["hatchling"]

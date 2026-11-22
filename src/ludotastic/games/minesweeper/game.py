@@ -6,11 +6,13 @@ __all__: tuple[str, ...] = (
     "MINES",
     "ROWS",
     "Action",
+    "Cell",
     "Minesweeper",
     "MinesweeperState",
     "Move",
     "adjacent_mines",
     "neighbours",
+    "place_mines",
 )
 
 import random
@@ -18,7 +20,7 @@ from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Final, override
 
-from annotated_types import Interval
+from annotated_types import Interval, Len
 from pydantic import BaseModel, ConfigDict
 
 from ludotastic.engine.game import ActionMode, Game, GameInfo, Outcome
@@ -31,13 +33,18 @@ COLS: Final = 9
 """Number of columns in the grid."""
 ROWS: Final = 13
 """Number of rows in the grid."""
-MINES: Final = 30
+MINES: Final = 20
 """Mines hidden under the grid."""
 CELLS: Final = COLS * ROWS
 """Total number of cells on the grid."""
 
-type Mine = tuple[int, int]
-"""A mine's position as `(column, row)`."""
+type Cell = Annotated[int, Interval(ge=0, le=CELLS - 1)]
+"""A cell's number: row `cell // COLS`, column `cell % COLS`."""
+
+type Grid = Annotated[tuple[bool, ...], Len(CELLS, CELLS)]
+"""One flag per cell, by cell number."""
+
+_ALL_COVERED: Final[tuple[bool, ...]] = (False,) * CELLS
 
 
 class Action(StrEnum):
@@ -61,18 +68,25 @@ class Move(BaseModel):
 
 
 class MinesweeperState(BaseModel):
-    """The mines, the cells revealed and flagged, and whether a mine was hit."""
+    """The mines, the cells revealed and flagged, and the mine hit, if any."""
 
     model_config = ConfigDict(frozen=True)
 
-    mines: frozenset[Mine] = frozenset()
-    """The mines' positions as `(column, row)`."""
-    revealed: tuple[bool, ...] = ()
+    seed: int = 0
+    """Where the mines go; they are placed on the first reveal."""
+    mines: frozenset[Cell] = frozenset()
+    """The mines' cell numbers; empty until the first reveal."""
+    revealed: Grid = _ALL_COVERED
     """Which cells are revealed, by cell number."""
-    flagged: tuple[bool, ...] = ()
+    flagged: Grid = _ALL_COVERED
     """Which cells are flagged, by cell number."""
-    game_over: bool = False
-    """Whether a mine has been revealed."""
+    exploded: Cell | None = None
+    """The mine that was revealed, ending the game."""
+
+    @property
+    def game_over(self) -> bool:
+        """Whether a mine has been revealed."""
+        return self.exploded is not None
 
     @property
     def won(self) -> bool:
@@ -82,8 +96,11 @@ class MinesweeperState(BaseModel):
             >>> MinesweeperState().won
             False
         """
-        safe = len(self.revealed) - len(self.mines)
-        return safe > 0 and sum(self.revealed) >= safe
+        if not self.mines or self.game_over:
+            return False
+        return all(
+            shown for cell, shown in enumerate(self.revealed) if cell not in self.mines
+        )
 
 
 def _col_row(cell: int) -> tuple[int, int]:
@@ -112,37 +129,42 @@ def neighbours(cell: int) -> tuple[int, ...]:
     return tuple(found)
 
 
-def _mine_indices(mines: frozenset[Mine]) -> frozenset[int]:
-    """The cell numbers of the mines."""
-    return frozenset(row * COLS + col for col, row in mines)
-
-
-def adjacent_mines(mines: frozenset[Mine], cell: int) -> int:
+def adjacent_mines(mines: frozenset[int], cell: int) -> int:
     """How many mines touch `cell`.
 
     Examples:
-        >>> adjacent_mines(frozenset({(0, 0)}), 1)
+        >>> adjacent_mines(frozenset({0}), 1)
         1
-        >>> adjacent_mines(frozenset({(0, 0)}), 116)
+        >>> adjacent_mines(frozenset({0}), 116)
         0
     """
-    indices = _mine_indices(mines)
-    return sum(neighbour in indices for neighbour in neighbours(cell))
+    return sum(neighbour in mines for neighbour in neighbours(cell))
+
+
+def place_mines(seed: int, first: int) -> frozenset[int]:
+    """Scatter the mines away from the first cell revealed and its neighbours.
+
+    Examples:
+        >>> mines = place_mines(0, 40)
+        >>> len(mines), 40 in mines, any(n in mines for n in neighbours(40))
+        (20, False, False)
+    """
+    keep_clear = {first, *neighbours(first)}
+    free = [cell for cell in range(CELLS) if cell not in keep_clear]
+    return frozenset(random.Random(seed).sample(free, MINES))
 
 
 def _flood_reveal(state: MinesweeperState, start: int) -> tuple[bool, ...]:
     """Reveal `start`, opening every connected run of empty cells."""
-    mines = _mine_indices(state.mines)
     revealed = list(state.revealed)
     pending = [start]
     while pending:
         cell = pending.pop()
-        if revealed[cell] or state.flagged[cell] or cell in mines:
+        if revealed[cell] or state.flagged[cell] or cell in state.mines:
             continue
         revealed[cell] = True
-        around = neighbours(cell)
-        if not any(neighbour in mines for neighbour in around):
-            pending.extend(around)
+        if not adjacent_mines(state.mines, cell):
+            pending.extend(neighbours(cell))
     return tuple(revealed)
 
 
@@ -150,11 +172,13 @@ def _reveal(state: MinesweeperState, cell: int) -> MinesweeperState:
     """Reveal `cell`, ending the game in a loss when it holds a mine."""
     if state.game_over or state.revealed[cell] or state.flagged[cell]:
         return state
-    if cell in _mine_indices(state.mines):
+    if not state.mines:
+        state = state.model_copy(update={"mines": place_mines(state.seed, cell)})
+    if cell in state.mines:
         revealed = tuple(
             index == cell or was for index, was in enumerate(state.revealed)
         )
-        return state.model_copy(update={"revealed": revealed, "game_over": True})
+        return state.model_copy(update={"revealed": revealed, "exploded": cell})
     return state.model_copy(update={"revealed": _flood_reveal(state, cell)})
 
 
@@ -183,23 +207,20 @@ class Minesweeper(Game[MinesweeperState, Move]):
     rules = (
         f"Minesweeper is played on a {COLS} by {ROWS} grid of cells with {MINES} "
         "mines hidden under some of them. On your turn, reveal one cell or toggle "
-        "the flag on one cell. Revealing a cell that holds a mine ends the game in "
-        "a loss. A revealed cell shows how many mines touch it, from 0 to 8; a "
-        "cell with no touching mines opens every connected empty cell. Flag cells "
-        "you believe hold mines. You win by revealing every cell without a mine."
+        "the flag on one cell. Your first reveal is always safe, and opens an area "
+        "with no mines touching it. Revealing a cell that holds a mine ends the "
+        "game in a loss. A revealed cell shows how many mines touch it, from 0 to "
+        "8; a cell with no touching mines opens every connected empty cell. Flag "
+        "cells you believe hold mines. You win by revealing every cell without a "
+        "mine."
     )
     state_type = MinesweeperState
     action_type = Move
 
     @override
     def initial_state(self, rng: random.Random) -> MinesweeperState:
-        """Scatter the mines and cover every cell."""
-        chosen = rng.sample(range(CELLS), MINES)
-        return MinesweeperState(
-            mines=frozenset(_col_row(cell) for cell in chosen),
-            revealed=(False,) * CELLS,
-            flagged=(False,) * CELLS,
-        )
+        """Cover every cell; the mines wait for the first reveal."""
+        return MinesweeperState(seed=rng.getrandbits(32))
 
     @override
     def to_move(self, state: MinesweeperState) -> Sequence[Seat]:
@@ -254,17 +275,23 @@ class Minesweeper(Game[MinesweeperState, Move]):
         return Outcome(scores=(0.0,), reason="Turn limit reached — field not cleared.")
 
     @override
+    def public_state(self, state: MinesweeperState) -> MinesweeperState:
+        """Hide the mines, and the seed that places them, until the game ends."""
+        if self.outcome(state) is not None:
+            return state
+        return state.model_copy(update={"seed": 0, "mines": frozenset()})
+
+    @override
     def observe(self, state: MinesweeperState, player: Seat) -> str:
         """The grid as the player sees it; mines stay hidden."""
         del player
-        mines = _mine_indices(state.mines)
         lines = ["    " + " ".join(str(col) for col in range(COLS))]
         for row in range(ROWS):
             marks: list[str] = []
             for col in range(COLS):
                 cell = row * COLS + col
                 if state.revealed[cell]:
-                    count = sum(n in mines for n in neighbours(cell))
+                    count = adjacent_mines(state.mines, cell)
                     marks.append(str(count) if count else ".")
                 elif state.flagged[cell]:
                     marks.append("F")
