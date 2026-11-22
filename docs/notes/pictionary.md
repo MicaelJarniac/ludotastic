@@ -44,7 +44,9 @@ as text. Only image-capable models can guess. A decision model's latest
 probabilities are drawn as bars behind each word, so you can watch it change its
 mind stroke by stroke.
 
-Only guessers can be AI players: the drawer is a person or the `shapes` bot.
+Only guessers can be AI players (`Game.ai_seats`): the new-match form offers no AI
+for the drawer, and the API refuses one. The drawer is a person or the `shapes`
+bot.
 That bot draws four simple shapes, one a second, whatever the word, so it only
 serves as a baseline.
 

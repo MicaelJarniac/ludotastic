@@ -423,3 +423,12 @@ async def test_late_input_is_ignored(user: User, service: MatchService) -> None:
     await user.should_see("Time!")
     user.find(Sketchpad).trigger("stroke", [[1, 1]])
     assert match.state.strokes == ()  # type: ignore[ty:unresolved-attribute]
+
+
+def test_only_guessers_can_be_ai(service: MatchService) -> None:
+    assert Pictionary(3).ai_seats() == {1, 2}
+    with pytest.raises(ValueError, match="An AI cannot play Drawer"):
+        service.create(
+            "pictionary",
+            [AISpec(model="test", mode=ActionMode.RANK), BotSpec(bot="shapes")],
+        )

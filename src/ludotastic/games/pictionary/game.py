@@ -475,6 +475,11 @@ class Pictionary(Game[PictionaryState, PictionaryAction]):
         return "Drawer" if player == 0 else f"Guesser {player}"
 
     @override
+    def ai_seats(self) -> frozenset[Seat]:
+        """Only guessers: an AI ranks words, but cannot be asked to draw."""
+        return frozenset(range(1, self.num_players))
+
+    @override
     def bots(self) -> Mapping[str, BotFactory]:
         return {"shapes": ShapesBot}
 
