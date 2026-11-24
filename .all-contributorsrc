@@ -41,6 +41,17 @@
         "test",
         "doc"
       ]
+    },
+    {
+      "login": "DlrRogerio",
+      "name": "Rogério Rodrigues",
+      "avatar_url": "https://avatars.githubusercontent.com/u/162837995?v=4",
+      "profile": "https://github.com/DlrRogerio",
+      "contributions": [
+        "code",
+        "test",
+        "doc"
+      ]
     }
   ],
   "contributorsPerLine": 7,
