@@ -189,6 +189,7 @@ class MatchService:
         self.games = games if games is not None else registry
         self.store = store or Store(self.settings.resolved_database_url)
         self.matches: dict[str, Match] = {}
+        self._players: dict[str, list[HumanSpec | BotSpec | AISpec]] = {}
 
     def create(
         self,
@@ -222,10 +223,26 @@ class MatchService:
             delay=0.0 if has_human else self.settings.ai_delay,
         )
         self.matches[match.id] = match
+        self._players[match.id] = list(players)
         match.subscribe(self._on_change)
         if start:
             match.start()
         return match
+
+    def can_rematch(self, match: Match) -> bool:
+        """Whether this service still knows how `match`'s players were set up."""
+        return match.id in self._players
+
+    def rematch(self, match: Match) -> Match:
+        """Start a new match of the same game, with the same players.
+
+        The new match gets a fresh seed.
+
+        Raises:
+            KeyError: If `match` was not created by this service, or has been
+                forgotten.
+        """
+        return self.create(match.game.info.id, self._players[match.id])
 
     def _on_change(self, match: Match) -> None:
         if match.done:
@@ -246,6 +263,7 @@ class MatchService:
     def forget_finished(self) -> None:
         """Drop finished matches from memory; they stay in the store."""
         self.matches = {k: m for k, m in self.matches.items() if not m.done}
+        self._players = {k: p for k, p in self._players.items() if k in self.matches}
 
     def shutdown(self) -> None:
         """Abort every live match."""

@@ -124,6 +124,7 @@ nav:
     - Tools & Standards: reference.md
     - API Reference: api.md
   - Notes:
+    - "Blackjack: rules, splits and hidden cards": notes/blackjack.md
     - "Connect Four: rules, AI and bots": notes/connect-four.md
     - "Minesweeper: rules, AI view and the field": notes/minesweeper.md
     - "Tic-Tac-Toe: board format for AI": notes/tictactoe-observation.md

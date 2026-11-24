@@ -302,6 +302,7 @@ async def test_api_hides_the_mines(service: MatchService) -> None:
     assert view["state"]["revealed"][40] is True
     assert view["state"]["mines"] == []
     assert view["state"]["seed"] == 0
+    assert view["seed"] is None
     match.abort()
 
 

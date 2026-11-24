@@ -38,7 +38,8 @@ class MatchView(BaseModel):
     id: str
     game_id: str
     status: MatchStatus
-    seed: int
+    seed: int | None
+    """The match's seed; withheld until the end in games with hidden information."""
     turn: int
     seats: list[SeatInfo]
     to_move: list[int]
@@ -59,7 +60,7 @@ class MatchView(BaseModel):
             id=match.id,
             game_id=game.info.id,
             status=match.status,
-            seed=match.seed,
+            seed=None if game.hides_information and not match.done else match.seed,
             turn=match.turn,
             seats=match.seats,
             to_move=thinking,

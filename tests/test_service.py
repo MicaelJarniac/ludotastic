@@ -35,8 +35,10 @@ async def test_create_and_store(service: MatchService) -> None:
     assert record.seed == 5
     assert record.turns == match.turn
     assert len(record.history) == len(match.history)
+    assert service.can_rematch(match)
     service.forget_finished()
     assert service.get(match.id) is None
+    assert not service.can_rematch(match)
 
 
 async def test_build_players(service: MatchService) -> None:

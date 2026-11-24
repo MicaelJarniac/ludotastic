@@ -14,6 +14,10 @@ This page provides detailed API documentation for Ludotastic.
 
 ::: ludotastic.storage
 
+## Blackjack
+
+::: ludotastic.games.blackjack
+
 ## Connect Four
 
 ::: ludotastic.games.connect_four

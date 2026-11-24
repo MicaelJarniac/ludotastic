@@ -314,9 +314,16 @@ class Game[S: BaseModel, A: BaseModel](ABC):
         """`state` with what no player may see yet left out, for the API.
 
         The whole state by default. Games with hidden information, such as
-        where the mines are, override this so API clients cannot read it.
+        where the mines are, override this so API clients cannot read it. The
+        API then also withholds the match's seed until the match ends, since
+        the seed would let a client work the hidden information out.
         """
         return state
+
+    @property
+    def hides_information(self) -> bool:
+        """Whether the game keeps part of its state from players, for the API."""
+        return type(self).public_state is not Game.public_state
 
     @abstractmethod
     def observe(self, state: S, player: Seat) -> str:

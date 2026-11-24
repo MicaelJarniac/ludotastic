@@ -9,6 +9,7 @@ from typing import Any, Final
 from nicegui import ui
 
 from ludotastic.engine.game import Game, View
+from ludotastic.engine.match import Match
 from ludotastic.engine.players import PlayerKind
 from ludotastic.engine.usage import Usage, format_cost
 from ludotastic.service import (
@@ -212,13 +213,35 @@ def _new_match_page(service: MatchService, game_id: str) -> None:
     ui.button("Start match", icon="play_arrow", on_click=start).mark("start")
 
 
+def _show_match(service: MatchService, match: Match) -> None:
+    """Draw a match, with a way to play again once it is over."""
+    rematch: Match | None = None
+
+    def play_again() -> None:
+        nonlocal rematch
+        if rematch is None:
+            rematch = service.rematch(match)
+        ui.navigate.to(f"/match/{rematch.id}")
+
+    with ui.row().classes("items-center gap-3").bind_visibility_from(match, "done"):
+        if service.can_rematch(match):
+            ui.button("Play again", icon="replay", on_click=play_again).mark(
+                "play-again"
+            )
+        else:
+            ui.link("Play again", f"/play/{match.game.info.id}").mark("play-again")
+        ui.link("All games", "/").mark("all-games")
+
+    match_view(match)
+
+
 def _match_page(service: MatchService, match_id: str) -> None:
     match = service.get(match_id)
     if match is None:
         ui.label("This match is no longer live.")
         ui.link("See it in the history", f"/history/{match_id}")
         return
-    match_view(match)
+    _show_match(service, match)
 
 
 def _live_page(service: MatchService) -> None:
@@ -291,7 +314,7 @@ def _history_match_page(service: MatchService, match_id: str) -> None:
     except KeyError:
         ui.label(f"The game {record.game_id!r} is not installed.")
         return
-    match_view(match)
+    _show_match(service, match)
     ui.label(f"Seed {record.seed}, {record.turns} turns").classes(
         "text-sm text-gray-500"
     )
