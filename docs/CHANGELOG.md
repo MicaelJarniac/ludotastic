@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v0.7.0 (2026-11-24)
+
+### Bug Fixes
+
+- **blackjack**: Use English text, add a generic play-again, hide seeds for hidden-information games
+  ([`9bfce3b`](https://github.com/MicaelJarniac/ludotastic/commit/9bfce3bc679b52c407c8e0789a292ac1c231c5b6))
+
+### Features
+
+- Add blackjack with pair splitting
+  ([`5ddd1a4`](https://github.com/MicaelJarniac/ludotastic/commit/5ddd1a4ac6217487f9984ec1b9621c3a6a80c37e))
+
+
 ## v0.6.0 (2026-11-23)
 
 ### Features
